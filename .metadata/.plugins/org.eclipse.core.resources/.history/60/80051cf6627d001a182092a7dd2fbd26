@@ -1,0 +1,123 @@
+package com.crm.filter;
+
+import java.io.IOException;
+
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
+import javax.servlet.annotation.WebFilter;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
+import com.crm.dto.LoginDto;
+
+import com.crm.util.UrlConstants;
+
+@WebFilter(urlPatterns = "/*")
+
+public class AuthFilter implements Filter {
+
+	@Override
+	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+			throws IOException, ServletException {
+
+		HttpServletRequest req = (HttpServletRequest) request;
+		HttpServletResponse resp = (HttpServletResponse) response;
+		String acction = req.getServletPath();
+		String query = req.getQueryString();
+
+		if (!acction.contains(UrlConstants.URL_LOGIN)) {
+
+			HttpSession session = req.getSession();
+			LoginDto userLogin = (LoginDto) session.getAttribute("USER_LOGIN");
+
+			if (userLogin == null) {
+				resp.sendRedirect(req.getContextPath() + UrlConstants.URL_LOGIN);
+				return;
+			}
+
+			switch (userLogin.getRoleName()) {
+			case "MEMBER":
+				if (!memberAuth(req, resp, acction, query, userLogin)) {
+					return;
+				}
+				break;
+
+			case "LEADER":
+				if (!leaderAuth(req, resp, acction, query, userLogin)) {
+					return;
+				}
+				break;
+
+			default:
+				break;
+			}
+		}
+
+		chain.doFilter(request, response);
+	}
+
+	private boolean memberAuth(HttpServletRequest req, HttpServletResponse resp, String acction, String query,
+			LoginDto userLogin) throws IOException {
+		if (!isCommonUrl(acction)) {
+			if(acction.contains("status"))
+			{
+				return true;
+			}
+			
+			if (!((query != null) && query.trim().equals("id=" + userLogin.getId()))) {
+				goToErrorPage(req, resp);
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private boolean leaderAuth(HttpServletRequest req, HttpServletResponse resp, String acction, String query,
+			LoginDto userLogin) throws IOException {
+		if (acction.contains(UrlConstants.URL_ROLE_LIST)) {
+			goToErrorPage(req, resp);
+			return false;
+		}
+		
+		if(acction.contains(UrlConstants.URL_USER_DELETE))
+		{
+			return false;
+		}
+		
+		if (acction.contains(UrlConstants.URL_USER_EDIT)
+				&& ((query != null) && !query.trim().equals("id=" + userLogin.getId()))) {
+			goToErrorPage(req, resp);
+			return false;
+		}
+
+		return true;
+	}
+
+	private void goToErrorPage(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+		resp.sendRedirect(req.getContextPath() + UrlConstants.URL_ERROR404);
+
+	}
+
+	private boolean isCommonUrl(String acction) {
+		switch (acction) {
+		case UrlConstants.URL_HOME:
+			return true;
+
+		case UrlConstants.URL_ERROR404:
+			return true;
+		case UrlConstants.URL_LOGOUT:
+			return true;
+
+		default:
+			break;
+		}
+
+		return false;
+	}
+	
+}

@@ -1,0 +1,187 @@
+package com.crm.controller;
+
+import java.io.IOException;
+import java.util.LinkedList;
+import java.util.List;
+
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
+import org.mindrot.jbcrypt.BCrypt;
+
+import com.crm.util.PathConstants;
+import com.crm.util.UrlConstants;
+import com.crm.entity.Status;
+import com.crm.entity.User;
+import com.crm.dto.LoginDto;
+import com.crm.dto.UserDto;
+import com.crm.dto.UserTasksDto;
+import com.crm.dao.RoleDAO;
+import com.crm.dao.TaskDAO;
+import com.crm.dao.UserDAO;
+
+@WebServlet(name = "UserServlet", urlPatterns = { UrlConstants.URL_USER_LIST, UrlConstants.URL_USER_ADD,
+		UrlConstants.URL_USER_DELETE, UrlConstants.URL_USER_EDIT, UrlConstants.URL_USER_DETAILS })
+
+public class UserController extends HttpServlet {
+
+	private static final long serialVersionUID = 1L;
+
+	private UserDAO userDao = null;
+	private RoleDAO roleDao = null;
+    private TaskDAO taskDao= null;
+	@Override
+	public void init(ServletConfig config) throws ServletException {
+		userDao = new UserDAO();
+		roleDao = new RoleDAO();
+		taskDao = new TaskDAO();
+	}
+
+	@Override
+	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+
+		String action = req.getServletPath();
+
+		switch (action) {
+		case UrlConstants.URL_USER_LIST:
+			userListGet(req, resp);
+			break;
+		case UrlConstants.URL_USER_ADD:
+			userAddGet(req, resp);
+			break;
+		case UrlConstants.URL_USER_EDIT:
+			userEditGet(req, resp);
+			break;
+		case UrlConstants.URL_USER_DETAILS:
+			userDetailsGet(req, resp);
+			break;
+		case UrlConstants.URL_USER_DELETE:
+			userDelete(req, resp);
+			break;
+		default:
+			break;
+		}
+
+	}
+
+	@Override
+	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+
+		// req.setCharacterEncoding("UTF-8");
+
+		String action = req.getServletPath();
+
+		switch (action) {
+		case UrlConstants.URL_USER_ADD:
+			userAddPost(req, resp);
+			break;
+		case UrlConstants.URL_USER_EDIT:
+			userEditPost(req, resp);
+			break;
+		default:
+			break;
+		}
+
+	}
+
+	private void userListGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		List<UserDto> usersDto = userDao.findAllDto();
+
+		req.setAttribute("users", usersDto);
+
+		req.getRequestDispatcher(PathConstants.PATH_USER_LIST).forward(req, resp);
+	}
+
+	private void userDetailsGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		
+		int id = Integer.parseInt(req.getParameter("id"));
+		
+		UserTasksDto userTasks = userDao.findUserTasksByUserId(id);
+		
+		List<Status> listStatus = taskDao.findAllStatus();
+		
+	
+		req.setAttribute("status", listStatus );
+		req.setAttribute("user", userDao.findUserDto(id));
+		
+		List<UserTasksDto> listUserTasks = new LinkedList<UserTasksDto>();
+		listUserTasks.add(userTasks);
+		req.setAttribute("listUserTasks", listUserTasks);
+		req.setAttribute("statusDto", taskDao.listStatusDto(listUserTasks, listStatus));
+		
+		req.getRequestDispatcher(PathConstants.PATH_USER_DETAILS).forward(req, resp);
+	}
+
+	private void userDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		int id = Integer.parseInt(req.getParameter("id"));
+
+		userDao.deleteById(id);
+
+		resp.sendRedirect(req.getContextPath() + UrlConstants.URL_USER_LIST);
+	}
+
+	private void userAddGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		req.setAttribute("roles", roleDao.findAll());
+		req.getRequestDispatcher(PathConstants.PATH_USER_ADD).forward(req, resp);
+	}
+
+	private void userAddPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+
+		String fullname = req.getParameter("fullname");
+		String email = req.getParameter("email");
+		String password = req.getParameter("password");
+		String avatar = req.getParameter("avatar");
+		int roleId = Integer.parseInt(req.getParameter("roleId"));
+
+		User user = new User(-1, email, password, fullname, avatar, roleId);
+
+		String hasedPassword = BCrypt.hashpw(password, BCrypt.gensalt(12));
+		user.setPassword(hasedPassword);
+
+		userDao.insert(user);
+
+		resp.sendRedirect(req.getContextPath() + UrlConstants.URL_USER_LIST);
+	}
+
+	private void userEditGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+
+		int id = Integer.parseInt(req.getParameter("id"));
+
+		req.setAttribute("roles", roleDao.findAll());
+		req.setAttribute("user", userDao.findById(id));
+		req.getRequestDispatcher(PathConstants.PATH_USER_EDIT).forward(req, resp);
+	}
+
+	private void userEditPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		int id = Integer.parseInt(req.getParameter("id"));
+		String fullname = req.getParameter("fullname");
+		String email = req.getParameter("email");
+		String password = req.getParameter("password");
+		String avatar = req.getParameter("avatar");
+		int roleId = Integer.parseInt(req.getParameter("roleId"));
+
+		User user = new User(id, email, password, fullname, avatar, roleId);
+        
+		if (password != null && password.trim().length() > 0) {
+			String hasedPassword = BCrypt.hashpw(password, BCrypt.gensalt(12));
+			user.setPassword(hasedPassword);
+			userDao.update(user);
+		}
+		else
+		{
+			userDao.updateWithoutPassword(user);
+		}
+		
+		LoginDto loginDto = new LoginDto(id, email, "", fullname, avatar, roleDao.findById(roleId).getName());
+		
+		HttpSession session = req.getSession();
+		session.removeAttribute("USER_LOGIN");
+		session.setAttribute("USER_LOGIN", loginDto);
+		resp.sendRedirect(req.getContextPath() + UrlConstants.URL_USER_LIST);
+	}
+}
